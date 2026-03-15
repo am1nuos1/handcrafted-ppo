@@ -15,28 +15,34 @@ class Agent:
                  N = 2048, n_epochs = 10):
         self.gamma = gamma
         self.policy_clip = policy_clip
-        self.n_epoches = self.n_epoches
+        self.n_epochs = n_epochs
         self.gae_lambda = gae_lambda
 
         self.actor = actor(n_actions, input_dims, alpha)
         self.critic = critic(input_dims, alpha)
+        self.memory = PPOMemory(batch_size)
 
-    def store_memory(self, states, probs, actions, vals, reward, done):
-        PPOMemory.store_memory(states, probs, actions, vals, reward, done)
+    def remember(self, state, action, probs, vals, reward, done):
+        self.memory.store_memory(state, action, probs, vals, reward, done)
+
+    def store_memory(self, state, action, probs, vals, reward, done):
+        self.remember(state, action, probs, vals, reward, done)
 
     def save_models(self):
         print('...........saving models...........')
-        actor.save_checkpoint()
-        critic.save_checkpoint()
+        self.actor.save_checkpoint()
+        self.critic.save_checkpoint()
 
 
     def load_models(self):
         print('...........loading models...........')
-        actor.load_checkpoint()
-        critic.load_checkpoint()
+        self.actor.load_checkpoint()
+        self.critic.load_checkpoint()
 
     def choose_action(self, observation):
-        state = torch([observation], dtype = torch.float).to(self.actor.device)
+        state = torch.tensor(
+            observation, dtype=torch.float32, device=self.actor.device
+        ).flatten().unsqueeze(0)
         dist = self.actor(state)
         value = self.critic(state)
         action = dist.sample()
@@ -48,7 +54,7 @@ class Agent:
         return action, probs, value
     
     def learn(self):
-        for i in range(self.n_epoches):
+        for _ in range(self.n_epochs):
             state_arr, action_arr, old_prob_arr, vals_arr,\
             reward_arr, dones_arr, batches = \
                     self.memory.generate_batches()
@@ -69,7 +75,9 @@ class Agent:
             values = torch.tensor(values).to(self.actor.device)
 
             for batch in batches:
-                states = torch.tensor(state_arr[batch], dtype=torch.float).to(self.actor.device)
+                states = torch.tensor(
+                    state_arr[batch], dtype=torch.float32, device=self.actor.device
+                )
                 old_probs = torch.tensor(old_prob_arr[batch]).to(self.actor.device)
                 actions = torch.tensor(action_arr[batch]).to(self.actor.device)
 
@@ -80,8 +88,9 @@ class Agent:
                 new_probs = dist.log_prob(actions)
                 prob_ratio = new_probs.exp() / old_probs.exp()
                 weighted_probs = advantages[batch] * prob_ratio
-                weighted_clipped_probs = torch.clamp(prob_ratio, 1-self.policy_clip,\
-                                                      * 1+self.policy_clip)*advantages[batch]
+                weighted_clipped_probs = torch.clamp(
+                    prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip
+                ) * advantages[batch]
                 actor_loss = -torch.min(weighted_clipped_probs, weighted_probs).mean()
                 
                 returns = advantages[batch] + values[batch]
@@ -95,4 +104,4 @@ class Agent:
                 self.actor.optimizer.step()
                 self.critic.optimizer.step()
                 
-        self.memory.clear_memory()   
+        self.memory.clear_memory()

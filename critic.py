@@ -13,6 +13,7 @@ class CriticNetwork(nn.Module):
         
         super(CriticNetwork, self).__init__()
 
+        os.makedirs(checkpoint_dir, exist_ok=True)
         self.checkpoint_file = os.path.join(checkpoint_dir, 'Critic_torch_ppo')
         self.critic = nn.Sequential(
             nn.Linear(*input_dims, fc1_dims),
@@ -20,7 +21,6 @@ class CriticNetwork(nn.Module):
             nn.Linear(fc1_dims, fc2_dims),
             nn.ReLU(),
             nn.Linear(fc2_dims, 1),
-            nn.Softmax(dim = -1),
         )
 
         self.optimizer = optim.Adam(self.parameters(), lr= alpha)
